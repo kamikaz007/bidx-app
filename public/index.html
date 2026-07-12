@@ -5,7 +5,7 @@
     <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
     <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
     <meta name="theme-color" content="#6d28d9" />
-    <meta name="description" content="BIDX - منصة المزادات العالمية على Pi Network. ترميز وبيع أي أصل في العالم" />
+    <meta name="description" content="BIDX - منصة المزادات العالمية على Pi Network" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <title>BIDX - منصة المزادات على Pi Network</title>
@@ -14,7 +14,6 @@
     <script src="https://sdk.minepi.com/pi-sdk.js"></script>
     
     <style>
-      /* شاشة تحميل أولية */
       #loading-screen {
         position: fixed;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -31,8 +30,7 @@
         pointer-events: none;
       }
       #loading-screen .logo {
-        width: 80px;
-        height: 80px;
+        width: 80px; height: 80px;
         background: white;
         border-radius: 20px;
         display: flex;
@@ -57,7 +55,6 @@
     </style>
   </head>
   <body>
-    <!-- شاشة التحميل -->
     <div id="loading-screen">
       <div class="logo">B</div>
       <p>جارٍ تحميل BIDX...</p>
@@ -67,7 +64,6 @@
     <div id="root"></div>
     
     <script>
-      // إخفاء شاشة التحميل بعد تحميل التطبيق
       window.addEventListener('load', function() {
         setTimeout(function() {
           var loader = document.getElementById('loading-screen');

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { FaHome, FaPlus, FaUser, FaGavel, FaGem, FaWallet, FaSignOutAlt, FaChartLine, FaChartPie } from 'react-icons/fa';
+import { FaHome, FaPlus, FaUser, FaGavel, FaGem, FaWallet, FaSignOutAlt, FaChartLine, FaChartPie, FaMoneyBillWave } from 'react-icons/fa';
 import { useAuth } from '../../context/AuthContext';
 
 const Sidebar = () => {
@@ -12,6 +12,7 @@ const Sidebar = () => {
     { path: '/create', icon: <FaPlus />, label: 'مزاد جديد', color: '#059669' },
     { path: '/fractional', icon: <FaChartPie />, label: 'الملكية الجزئية', color: '#059669' },
     { path: '/nft-market', icon: <FaGem />, label: 'سوق NFTs', color: '#db2777' },
+    { path: '/payment', icon: <FaMoneyBillWave />, label: 'الدفع Pi', color: '#8b5cf6' },
     { path: '/wallet', icon: <FaWallet />, label: 'المحفظة', color: '#d97706' },
     { path: '/my-auctions', icon: <FaGavel />, label: 'مزاداتي', color: '#2563eb' },
     { path: '/dashboard', icon: <FaChartLine />, label: 'لوحة الأرباح', color: '#f59e0b' },
@@ -55,25 +56,6 @@ const Sidebar = () => {
               </Link>
             );
           })}
-        </div>
-
-        <div style={{
-          marginTop: '24px', padding: '20px',
-          background: 'linear-gradient(135deg, #059669, #047857)',
-          borderRadius: '16px', color: 'white'
-        }}>
-          <div style={{ fontSize: '28px', marginBottom: '8px' }}>🏢</div>
-          <h3 style={{ fontWeight: '800', fontSize: '16px', marginBottom: '6px' }}>ملكية جزئية</h3>
-          <p style={{ fontSize: '12px', opacity: 0.9, marginBottom: '12px' }}>
-            استثمر في العقارات بحصص صغيرة
-          </p>
-          <Link to="/fractional" style={{
-            display: 'block', padding: '10px', background: 'white',
-            color: '#059669', borderRadius: '10px', fontWeight: '700',
-            fontSize: '13px', textAlign: 'center'
-          }}>
-            استثمر الآن
-          </Link>
         </div>
 
         <button onClick={logout} style={{

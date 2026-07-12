@@ -8,12 +8,14 @@ import Sidebar from './components/Layout/Sidebar';
 import BackgroundVideo from './components/BackgroundVideo';
 import Home from './pages/Home';
 import Login from './pages/Login';
+import AuthCallback from './pages/AuthCallback';
 import CreateAuction from './pages/CreateAuction';
 import AuctionDetail from './pages/AuctionDetail';
 import Profile from './pages/Profile';
 import MyAuctions from './pages/MyAuctions';
 import NFTMarket from './pages/NFTMarket';
 import Wallet from './pages/Wallet';
+import Payment from './pages/Payment';
 import Debug from './pages/Debug';
 import Dashboard from './pages/Dashboard';
 import FractionalMarket from './pages/FractionalMarket';
@@ -44,12 +46,14 @@ const AppContent = () => {
         }
       }} />
       
-      {/* فيديو الخلفية */}
       <BackgroundVideo />
       
       <Routes>
+        {/* صفحات عامة */}
         <Route path="/login" element={<Login />} />
+        <Route path="/auth/callback" element={<AuthCallback />} />
         
+        {/* صفحات محمية */}
         <Route path="/*" element={
           <ProtectedRoute>
             <>
@@ -57,15 +61,10 @@ const AppContent = () => {
               <div style={{ display: 'flex' }}>
                 <Sidebar />
                 <main style={{
-                  flex: 1,
-                  padding: '24px',
-                  paddingTop: '92px',
-                  maxWidth: '1200px',
-                  margin: '0 auto',
-                  width: '100%',
-                  minHeight: '100vh',
-                  position: 'relative',
-                  zIndex: 1
+                  flex: 1, padding: '24px', paddingTop: '92px',
+                  maxWidth: '1200px', margin: '0 auto',
+                  width: '100%', minHeight: '100vh',
+                  position: 'relative', zIndex: 1
                 }}>
                   <Routes>
                     <Route path="/" element={<Home />} />
@@ -73,6 +72,7 @@ const AppContent = () => {
                     <Route path="/auction/:id" element={<AuctionDetail />} />
                     <Route path="/profile" element={<Profile />} />
                     <Route path="/wallet" element={<Wallet />} />
+                    <Route path="/payment" element={<Payment />} />
                     <Route path="/my-auctions" element={<MyAuctions />} />
                     <Route path="/nft-market" element={<NFTMarket />} />
                     <Route path="/fractional" element={<FractionalMarket />} />

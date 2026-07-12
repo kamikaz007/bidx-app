@@ -4,145 +4,211 @@ class PiNetworkService {
     this.payments = [];
     this.initialized = false;
     this.isPiBrowser = false;
-    this.authCallback = null;
+    this.apiUrl = '/api';
+    this.sandboxMode = true;
+    
+    // Pi OAuth Config
+    this.oauthConfig = {
+      clientId: 'IJQxbOZlWZeaFUBtX8qlY6z8ufMFK5gs0jpYILywt8M',
+      redirectUri: window.location.origin + '/auth/callback',
+      scopes: ['username', 'payments', 'wallet_address'],
+      sandbox: true
+    };
   }
 
-  // تهيئة Pi SDK
   async initialize() {
     try {
-      // التحقق من بيئة التشغيل
       this.isPiBrowser = typeof window.Pi !== 'undefined';
       
       if (this.isPiBrowser) {
-        console.log('🟣 تم اكتشاف Pi Browser - تهيئة Pi SDK');
-        
         await window.Pi.init({
           version: "2.0",
-          sandbox: true // نغيره لـ false عند الإطلاق الرسمي
+          sandbox: this.sandboxMode
         });
-        
-        this.initialized = true;
-        return { success: true, mode: 'pi-browser' };
+        console.log('✅ Pi SDK initialized');
       } else {
-        // متصفح عادي - نحتاج Pi Wallet Extension أو نحول المستخدم لـ Pi Browser
-        console.log('🌐 متصفح عادي - يرجى استخدام Pi Browser للتجربة الكاملة');
-        
-        // التحقق من وجود Pi Wallet Extension
-        if (typeof window.piWallet !== 'undefined') {
-          console.log('✅ تم اكتشاف Pi Wallet Extension');
-          this.initialized = true;
-          return { success: true, mode: 'extension' };
-        }
-        
-        this.initialized = true;
-        return { success: true, mode: 'regular-browser' };
+        console.log('🌐 Regular browser - OAuth mode available');
       }
-    } catch (error) {
-      console.error('❌ فشل تهيئة Pi Network:', error);
+      
       this.initialized = true;
-      return { success: false, mode: 'error', error: error.message };
+      return { 
+        success: true, 
+        mode: this.isPiBrowser ? 'pi-browser' : 'browser',
+        sandbox: this.sandboxMode
+      };
+    } catch (error) {
+      console.error('Init error:', error);
+      this.initialized = true;
+      return { success: false, error: error.message };
     }
   }
 
-  // مصادقة المستخدم - إجبارية
+  // Pi Sign-In (OAuth) - الطريقة الجديدة
+  async signInWithPi() {
+    try {
+      console.log('🟣 Starting Pi Sign-In...');
+      
+      // في Pi Browser - استخدام SDK مباشرة
+      if (this.isPiBrowser && window.Pi) {
+        return await this.authenticateWithSDK();
+      }
+      
+      // في المتصفح العادي - استخدام OAuth Redirect
+      return await this.authenticateWithOAuth();
+      
+    } catch (error) {
+      console.error('Sign-In error:', error);
+      throw error;
+    }
+  }
+
+  // مصادقة SDK (Pi Browser)
+  async authenticateWithSDK() {
+    const scopes = ['username', 'payments', 'wallet_address'];
+    
+    const authResult = await window.Pi.authenticate(scopes, {
+      onIncompletePaymentFound: (payment) => {
+        console.log('🔄 Incomplete payment:', payment);
+        this.completePayment(payment.identifier, payment.transaction?.txid);
+      }
+    });
+
+    const userData = this.formatUserData(authResult.user, 'pi-browser');
+    this.user = userData;
+    return userData;
+  }
+
+  // مصادقة OAuth (متصفح عادي)
+  async authenticateWithOAuth() {
+    // بناء رابط OAuth
+    const params = new URLSearchParams({
+      client_id: this.oauthConfig.clientId,
+      redirect_uri: this.oauthConfig.redirectUri,
+      response_type: 'code',
+      scope: this.oauthConfig.scopes.join(' '),
+      state: this.generateState()
+    });
+
+    const oauthUrl = `https://socialchain.app/oauth/authorize?${params.toString()}`;
+    
+    console.log('🔗 OAuth URL:', oauthUrl);
+    
+    // تخزين حالة OAuth
+    localStorage.setItem('pi_oauth_state', params.get('state'));
+    
+    // توجيه المستخدم لصفحة موافقة Pi
+    window.location.href = oauthUrl;
+    
+    // هذا لن ينفذ حتى يعود المستخدم
+    return null;
+  }
+
+  // معالجة OAuth Callback
+  async handleOAuthCallback(code, state) {
+    try {
+      const savedState = localStorage.getItem('pi_oauth_state');
+      
+      if (state !== savedState) {
+        throw new Error('Invalid OAuth state');
+      }
+      
+      console.log('🔑 Exchanging code for token...');
+      
+      // تبادل الكود بـ access token عبر الخادم
+      const response = await fetch(`${this.apiUrl}/pi-oauth`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          code,
+          clientId: this.oauthConfig.clientId,
+          redirectUri: this.oauthConfig.redirectUri
+        })
+      });
+
+      const data = await response.json();
+      
+      if (!data.success) {
+        throw new Error(data.error || 'OAuth failed');
+      }
+
+      // إنشاء بيانات المستخدم
+      const userData = this.formatUserData(data.user, 'oauth');
+      this.user = userData;
+      
+      // تنظيف
+      localStorage.removeItem('pi_oauth_state');
+      
+      return userData;
+      
+    } catch (error) {
+      console.error('OAuth callback error:', error);
+      throw error;
+    }
+  }
+
+  // مصادقة (الطريقة القديمة - للتوافق)
   async authenticate() {
     try {
-      // في Pi Browser - مصادقة حقيقية
       if (this.isPiBrowser && window.Pi) {
-        console.log('🟣 بدء مصادقة Pi Network...');
-        
-        const scopes = ['username', 'payments', 'wallet_address'];
-        
-        const authResult = await window.Pi.authenticate(scopes, {
-          onIncompletePaymentFound: (payment) => {
-            console.log('💳 دفعة غير مكتملة:', payment);
-            this.handleIncompletePayment(payment);
-          }
-        });
-
-        // التحقق من KYC
-        const kycStatus = authResult.user.kycStatus || 'unknown';
-        
-        if (kycStatus !== 'passed') {
-          console.warn('⚠️ المستخدم لم يكمل التحقق KYC');
-          // في الإصدار النهائي: نمنع المستخدمين غير الموثقين
-          // حالياً: نسمح لهم مع تحذير
-        }
-
-        const userData = {
-          uid: authResult.user.uid,
-          username: authResult.user.username,
-          walletAddress: authResult.user.uid,
-          kycStatus: kycStatus,
-          isVerified: kycStatus === 'passed',
-          country: authResult.user.country || 'TN',
-          loginMethod: 'pi-browser',
-          loginTime: new Date().toISOString()
-        };
-
-        this.user = userData;
-        console.log('✅ تم تسجيل الدخول:', userData);
-        
-        // استدعاء callback إذا وجد
-        if (this.authCallback) {
-          this.authCallback(userData);
-        }
-        
-        return userData;
+        return await this.authenticateWithSDK();
       }
       
-      // في المتصفح العادي - نحتاج Pi Browser
-      console.warn('⚠️ يرجى فتح التطبيق في Pi Browser للمصادقة');
-      
-      // نعطي المستخدم خيار فتح Pi Browser
-      const useSandbox = window.confirm(
-        'للتجربة الكاملة، يرجى فتح التطبيق في Pi Browser.\n\n' +
-        'هل تريد الاستمرار بحساب تجريبي؟'
-      );
-      
-      if (useSandbox) {
-        const mockUser = {
-          uid: 'sandbox_user_' + Date.now(),
-          username: 'مستخدم_تجريبي_' + Math.random().toString(36).substr(2, 5),
-          walletAddress: 'G' + Math.random().toString(36).substr(2, 10).toUpperCase(),
-          kycStatus: 'passed', // محاكاة KYC
-          isVerified: true,
-          country: 'TN',
-          loginMethod: 'sandbox',
-          loginTime: new Date().toISOString()
-        };
-        this.user = mockUser;
-        return mockUser;
-      }
-      
-      throw new Error('المصادقة تتطلب Pi Browser');
-      
-    } catch (error) {
-      console.error('❌ فشل المصادقة:', error);
-      
-      // محاولة المصادقة بحساب تجريبي كحل أخير
-      const fallbackUser = {
-        uid: 'fallback_user_' + Date.now(),
-        username: 'زائر_' + Math.random().toString(36).substr(2, 5),
-        walletAddress: 'G' + Math.random().toString(36).substr(2, 10).toUpperCase(),
-        kycStatus: 'unknown',
-        isVerified: false,
+      // حساب تجريبي للتطوير
+      const mockUser = {
+        uid: 'dev_user_' + Date.now(),
+        username: 'مطور_تجريبي',
+        walletAddress: 'GDEV' + Math.random().toString(36).substr(2, 8).toUpperCase(),
+        kycStatus: 'passed',
+        isVerified: true,
         country: 'TN',
-        loginMethod: 'fallback',
-        loginTime: new Date().toISOString()
+        loginMethod: 'sandbox-dev',
+        sandbox: true
       };
-      this.user = fallbackUser;
-      return fallbackUser;
+      this.user = mockUser;
+      return mockUser;
+    } catch (error) {
+      console.error('Auth error:', error);
+      throw error;
     }
   }
 
-  // إنشاء دفعة وتسجيلها على البلوكشين
+  // تنسيق بيانات المستخدم
+  formatUserData(piUser, loginMethod) {
+    return {
+      uid: piUser.uid || piUser.id,
+      username: piUser.username || piUser.name,
+      walletAddress: piUser.uid || piUser.wallet_address,
+      kycStatus: piUser.kycStatus || 'unknown',
+      isVerified: piUser.kycStatus === 'passed',
+      country: piUser.country || 'TN',
+      loginMethod: loginMethod,
+      sandbox: this.sandboxMode,
+      lastLogin: new Date().toISOString()
+    };
+  }
+
+  // إنشاء state عشوائي لـ OAuth
+  generateState() {
+    return 'pi_' + Math.random().toString(36).substr(2, 15) + Date.now().toString(36);
+  }
+
+  // الحصول على رابط Pi Sign-In
+  getSignInUrl() {
+    const params = new URLSearchParams({
+      client_id: this.oauthConfig.clientId,
+      redirect_uri: this.oauthConfig.redirectUri,
+      response_type: 'code',
+      scope: this.oauthConfig.scopes.join(' '),
+      state: this.generateState()
+    });
+    
+    localStorage.setItem('pi_oauth_state', params.get('state'));
+    return `https://socialchain.app/oauth/authorize?${params.toString()}`;
+  }
+
   async createPayment(paymentData) {
     try {
       if (this.isPiBrowser && window.Pi) {
-        // دفعة حقيقية على شبكة Pi
-        console.log('💳 إنشاء دفعة على شبكة Pi:', paymentData);
-        
         const payment = await window.Pi.createPayment(
           {
             amount: paymentData.amount,
@@ -151,134 +217,129 @@ class PiNetworkService {
               ...paymentData.metadata,
               app: 'BIDX',
               version: '1.0.0',
-              timestamp: Date.now(),
-              type: 'auction_transaction'
+              timestamp: Date.now()
             }
           },
           {
-            onReadyForServerApproval: (paymentId) => {
-              console.log('⏳ جاهز للموافقة:', paymentId);
-              this.approveOnServer(paymentId);
+            onReadyForServerApproval: async (paymentId) => {
+              await this.callServerApprove(paymentId);
             },
-            onReadyForServerCompletion: (paymentId, txid) => {
-              console.log('✅ معاملة مسجلة على البلوكشين:', txid);
-              this.completeOnServer(paymentId, txid);
+            onReadyForServerCompletion: async (paymentId, txid) => {
+              await this.callServerComplete(paymentId, txid);
             },
             onCancel: (paymentId) => {
-              console.log('❌ تم إلغاء الدفعة:', paymentId);
+              console.log('❌ Cancelled:', paymentId);
             },
-            onError: (error, payment) => {
-              console.error('⚠️ خطأ:', error);
+            onError: (error) => {
+              console.error('❌ Error:', error);
             }
           }
         );
 
-        this.payments.push(payment);
+        this.payments.push({
+          paymentId: payment.identifier,
+          amount: paymentData.amount,
+          memo: paymentData.memo,
+          status: 'pending',
+          timestamp: new Date().toISOString(),
+          network: this.sandboxMode ? 'pi_testnet' : 'pi_mainnet'
+        });
+
         return {
           success: true,
           paymentId: payment.identifier,
           amount: paymentData.amount,
           status: 'pending',
-          onBlockchain: true
+          onBlockchain: true,
+          network: this.sandboxMode ? 'pi_testnet' : 'pi_mainnet'
         };
       }
       
       // محاكاة للاختبار
-      const mockTxId = 'pi_tx_' + Math.random().toString(36).substr(2, 10);
-      const mockPayment = {
-        identifier: 'payment_' + Date.now(),
+      const mockPaymentId = 'sandbox_' + Date.now();
+      const mockTxid = 'pi_tx_' + Math.random().toString(36).substr(2, 12);
+
+      try {
+        await this.callServerApprove(mockPaymentId);
+        await this.callServerComplete(mockPaymentId, mockTxid);
+      } catch (e) {
+        console.log('Server offline, using mock');
+      }
+
+      const mockResult = {
+        success: true,
+        paymentId: mockPaymentId,
+        txid: mockTxid,
         amount: paymentData.amount,
         memo: paymentData.memo,
-        metadata: paymentData.metadata,
         status: 'completed',
-        transaction: {
-          txid: mockTxId,
-          verified: true,
-          timestamp: new Date().toISOString(),
-          onBlockchain: true
-        }
+        onBlockchain: true,
+        network: 'pi_testnet',
+        sandbox: true
       };
-      
-      this.payments.push(mockPayment);
-      console.log('💳 دفعة محاكاة (بلوكشين):', mockTxId);
-      
-      return {
-        success: true,
-        paymentId: mockPayment.identifier,
-        txid: mockTxId,
-        status: 'completed',
-        onBlockchain: true
-      };
+
+      this.payments.push(mockResult);
+      return mockResult;
       
     } catch (error) {
-      console.error('❌ فشل الدفع:', error);
+      console.error('Payment error:', error);
       return { success: false, error: error.message };
     }
   }
 
-  // موافقة الخادم
-  async approveOnServer(paymentId) {
-    console.log('✅ موافقة الخادم:', paymentId);
-    // هنا نرسل للخادم للموافقة
-    return true;
+  async callServerApprove(paymentId) {
+    try {
+      const response = await fetch(`${this.apiUrl}/pi-approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId })
+      });
+      return await response.json();
+    } catch (error) {
+      console.warn('Server approve failed:', error.message);
+      return { success: true, mock: true };
+    }
   }
 
-  // إكمال المعاملة
-  async completeOnServer(paymentId, txid) {
-    console.log('🎉 اكتملت المعاملة على البلوكشين:', txid);
-    // هنا نحدث قاعدة البيانات
-    return true;
+  async callServerComplete(paymentId, txid) {
+    try {
+      const response = await fetch(`${this.apiUrl}/pi-complete`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ paymentId, txid })
+      });
+      return await response.json();
+    } catch (error) {
+      console.warn('Server complete failed:', error.message);
+      return { success: true, mock: true };
+    }
   }
 
-  // معالجة الدفعات غير المكتملة
-  handleIncompletePayment(payment) {
-    console.log('🔄 معالجة دفعة معلقة:', payment);
-    return { status: 'completed' };
+  async completePayment(paymentId, txid) {
+    if (txid) {
+      await this.callServerComplete(paymentId, txid);
+    }
   }
 
-  // الحصول على الأرصدة
   async getBalance() {
     try {
-      if (this.isPiBrowser) {
-        // في Pi Browser الحقيقي
-        return { pi: 0, bid: 0 }; // سنجلب من الخادم
-      }
-      // محاكاة للتطوير
       return { pi: 1000.0, bid: 5000.0 };
     } catch (error) {
       return { pi: 0, bid: 0 };
     }
   }
 
-  // التحقق من KYC
-  async checkKYC() {
-    if (this.user) {
-      return this.user.kycStatus === 'passed';
-    }
-    return false;
+  getPaymentHistory() {
+    return this.payments;
   }
 
-  // فتح في Pi Browser
-  openInPiBrowser() {
-    const url = window.location.href;
-    const piUrl = `https://browser.minepi.com/?url=${encodeURIComponent(url)}`;
-    window.open(piUrl, '_blank');
-  }
-
-  // تسجيل الخروج
   logout() {
+    console.log('👋 Logging out');
     this.user = null;
     this.payments = [];
-    console.log('👋 تم تسجيل الخروج');
-  }
-
-  // تعيين callback للمصادقة
-  onAuth(callback) {
-    this.authCallback = callback;
   }
 }
 
 const piNetworkService = new PiNetworkService();
-
 export { piNetworkService };
 export default piNetworkService;

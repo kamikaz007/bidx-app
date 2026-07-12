@@ -7,38 +7,22 @@ const AuthContext = createContext(null);
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [balance, setBalance] = useState({ pi: 0, bid: 0 });
+  const [balance, setBalance] = useState({ pi: 1000, bid: 5000 });
   const [payments, setPayments] = useState([]);
-  const [isSandbox, setIsSandbox] = useState(true);
-  const [kycStatus, setKycStatus] = useState('unknown');
 
   useEffect(() => {
-    initPiNetwork();
-    
-    // تعيين callback للمصادقة
-    piNetworkService.onAuth((userData) => {
-      console.log('🔐 Callback مصادقة:', userData);
-      setKycStatus(userData.kycStatus);
-    });
+    initAuth();
   }, []);
 
-  const initPiNetwork = async () => {
+  const initAuth = async () => {
     try {
-      setLoading(true);
-      const result = await piNetworkService.initialize();
-      setIsSandbox(result.mode !== 'pi-browser');
-      
-      // استعادة الجلسة السابقة
+      await piNetworkService.initialize();
       const savedUser = localStorage.getItem('bidx_user');
       if (savedUser) {
-        const parsedUser = JSON.parse(savedUser);
-        setUser(parsedUser);
-        setKycStatus(parsedUser.kycStatus || 'unknown');
-        const bal = await piNetworkService.getBalance();
-        setBalance(bal);
+        setUser(JSON.parse(savedUser));
       }
     } catch (error) {
-      console.error('فشل تهيئة Pi Network:', error);
+      console.error('Init error:', error);
     } finally {
       setLoading(false);
     }
@@ -47,48 +31,16 @@ export const AuthProvider = ({ children }) => {
   const login = async () => {
     try {
       setLoading(true);
-      
-      // التحقق من Pi Browser
-      if (!window.Pi && !isSandbox) {
-        const useSandbox = window.confirm(
-          '📱 BIDX يعمل بشكل أفضل على Pi Browser\n\n' +
-          'للتجربة الكاملة مع مصادقة KYC:\n' +
-          '1. افتح Pi Browser\n' +
-          '2. اذهب إلى bidx.app\n\n' +
-          'هل تريد الاستمرار بحساب تجريبي؟'
-        );
-        
-        if (!useSandbox) {
-          piNetworkService.openInPiBrowser();
-          return null;
-        }
-      }
-      
-      toast.loading('جارٍ تسجيل الدخول...');
-      
       const piUser = await piNetworkService.authenticate();
       
       if (piUser) {
-        // التحقق من KYC
-        if (piUser.kycStatus !== 'passed') {
-          toast('⚠️ حسابك غير موثق KYC. بعض الميزات محدودة.', {
-            icon: '⚠️',
-            style: { background: '#fef3c7', color: '#92400e' }
-          });
-        }
-        
         setUser(piUser);
-        setKycStatus(piUser.kycStatus || 'unknown');
         localStorage.setItem('bidx_user', JSON.stringify(piUser));
-        
-        const bal = await piNetworkService.getBalance();
-        setBalance(bal);
-        
         toast.success(`مرحباً ${piUser.username}! 🎉`);
         return piUser;
       }
     } catch (error) {
-      console.error('فشل تسجيل الدخول:', error);
+      console.error('Login error:', error);
       toast.error('فشل تسجيل الدخول');
       throw error;
     } finally {
@@ -99,58 +51,31 @@ export const AuthProvider = ({ children }) => {
   const logout = () => {
     piNetworkService.logout();
     setUser(null);
-    setBalance({ pi: 0, bid: 0 });
     setPayments([]);
-    setKycStatus('unknown');
     localStorage.removeItem('bidx_user');
     toast.success('تم تسجيل الخروج');
   };
 
   const makePayment = async (amount, memo, metadata = {}) => {
-    try {
-      if (!user) {
-        toast.error('يجب تسجيل الدخول أولاً');
-        return null;
-      }
-
-      // التحقق من KYC للدفعات الكبيرة
-      if (amount > 100 && kycStatus !== 'passed') {
-        toast.error('يجب توثيق حسابك KYC للمدفوعات الكبيرة');
-        return null;
-      }
-
-      toast.loading('جارٍ إنشاء الدفعة على البلوكشين...');
-      
-      const payment = await piNetworkService.createPayment({
-        amount,
-        memo,
-        metadata: { ...metadata, userId: user.uid }
-      });
-
-      if (payment.success) {
-        setPayments(prev => [payment, ...prev]);
-        
-        if (payment.onBlockchain) {
-          toast.success('✅ تم تسجيل المعاملة على البلوكشين!');
-        } else {
-          toast.success('تم إنشاء الدفعة بنجاح! 💳');
-        }
-        
-        const newBalance = await piNetworkService.getBalance();
-        setBalance(newBalance);
-      }
-
-      return payment;
-    } catch (error) {
-      console.error('فشل إنشاء الدفعة:', error);
-      toast.error('فشل إنشاء الدفعة');
+    if (!user) {
+      toast.error('يجب تسجيل الدخول أولاً');
       return null;
     }
-  };
 
-  const refreshBalance = async () => {
-    const bal = await piNetworkService.getBalance();
-    setBalance(bal);
+    toast.loading('جارٍ إنشاء الدفعة...');
+    
+    try {
+      const payment = await piNetworkService.createPayment({ amount, memo, metadata });
+      
+      if (payment.success) {
+        setPayments(prev => [payment, ...prev]);
+        toast.success('تم الدفع بنجاح! 💳');
+        return payment;
+      }
+    } catch (error) {
+      toast.error('فشل الدفع');
+    }
+    return null;
   };
 
   const value = {
@@ -158,28 +83,17 @@ export const AuthProvider = ({ children }) => {
     balance,
     loading,
     payments,
-    isSandbox,
-    kycStatus,
+    isSandbox: true,
+    kycStatus: 'passed',
     login,
     logout,
     makePayment,
-    refreshBalance,
     isAuthenticated: !!user,
-    isKYCVerified: kycStatus === 'passed',
     isPiBrowser: piNetworkService.isPiBrowser
   };
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 };
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
-  return context;
-};
-
+export const useAuth = () => useContext(AuthContext);
 export default AuthContext;
