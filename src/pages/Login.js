@@ -1,38 +1,21 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { piNetworkService } from '../services/piNetwork';
-import { FaSignInAlt, FaFlask, FaShieldAlt, FaCheckCircle, FaMobile } from 'react-icons/fa';
+import { FaSignInAlt, FaFlask } from 'react-icons/fa';
 import { toast } from 'react-hot-toast';
 
 const Login = () => {
-  const { login, loading: authLoading, isPiBrowser } = useAuth();
-  const navigate = useNavigate();
+  const { login } = useAuth();
   const [loading, setLoading] = useState(false);
-
-  const handlePiSignIn = async () => {
-    setLoading(true);
-    toast.loading('جارٍ تسجيل الدخول عبر Pi Network...');
-    
-    try {
-      await piNetworkService.signInWithPi();
-      // إذا كان OAuth، سيتم توجيه المتصفح تلقائياً
-      // إذا كان Pi Browser، سيتم المصادقة مباشرة
-    } catch (error) {
-      console.error('Pi Sign-In error:', error);
-      toast.error('فشل تسجيل الدخول: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleDevLogin = async () => {
     setLoading(true);
+    toast.loading('جارٍ تسجيل الدخول...');
+    
     try {
       await login();
-      navigate('/');
+      // لا نعيد التوجيه - App.js سيتعامل مع إظهار المحتوى تلقائياً
     } catch (error) {
-      console.error('Dev login error:', error);
+      toast.error('فشل تسجيل الدخول');
     } finally {
       setLoading(false);
     }
@@ -60,11 +43,11 @@ const Login = () => {
         marginBottom: '8px'
       }}>BIDX</h1>
       
-      <p style={{ fontSize: '18px', color: 'var(--text-secondary)', marginBottom: '32px' }}>
+      <p style={{ fontSize: '18px', color: '#6b7280', marginBottom: '32px' }}>
         منصة المزادات العالمية
       </p>
 
-      {/* بطاقة Pi Sign-In */}
+      {/* بطاقة الدخول */}
       <div className="card" style={{
         padding: '32px', maxWidth: '420px', width: '100%',
         marginBottom: '20px', textAlign: 'center'
@@ -75,39 +58,31 @@ const Login = () => {
           Pi Sign-In
         </h2>
         
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '28px' }}>
+        <p style={{ color: '#6b7280', fontSize: '14px', marginBottom: '28px' }}>
           تسجيل دخول آمن باستخدام حساب Pi Network
         </p>
 
-        {/* زر Pi Sign-In */}
+        {/* زر Pi Sign-In (سيتم تفعيله بعد Pi Developer) */}
         <button
-          onClick={handlePiSignIn}
-          disabled={loading}
+          disabled
           style={{
             width: '100%',
-            background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
-            color: 'white', border: 'none',
+            background: '#d1d5db',
+            color: '#6b7280', border: 'none',
             padding: '16px 32px', borderRadius: '16px',
             fontSize: '16px', fontWeight: '700',
-            cursor: loading ? 'wait' : 'pointer',
-            boxShadow: '0 8px 24px rgba(109, 40, 217, 0.3)',
             display: 'flex', alignItems: 'center',
             justifyContent: 'center', gap: '12px',
-            opacity: loading ? 0.7 : 1
+            opacity: 0.6
           }}
         >
           <FaSignInAlt style={{ fontSize: '18px' }} />
-          {loading ? '⏳ جاري تسجيل الدخول...' : 'تسجيل الدخول بـ Pi Network'}
+          Pi Sign-In (قريباً)
         </button>
 
-        <div style={{
-          display: 'flex', justifyContent: 'center', gap: '16px',
-          marginTop: '16px', fontSize: '11px', color: 'var(--text-muted)'
-        }}>
-          <span>🔒 KYC</span>
-          <span>⛓️ بلوكشين</span>
-          <span>📱 Pi Browser</span>
-        </div>
+        <p style={{ fontSize: '11px', color: '#9ca3af', marginTop: '12px' }}>
+          يتطلب إكمال إعدادات Pi Developer Portal
+        </p>
       </div>
 
       {/* زر الحساب التجريبي */}
@@ -116,21 +91,21 @@ const Login = () => {
         disabled={loading}
         style={{
           display: 'flex', alignItems: 'center', gap: '8px',
-          background: 'transparent', color: 'var(--text-muted)',
-          border: '2px solid var(--border-color)',
-          padding: '12px 24px', borderRadius: '12px',
-          fontSize: '13px', fontWeight: '600',
-          cursor: loading ? 'wait' : 'pointer'
+          background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+          color: 'white', border: 'none',
+          padding: '16px 40px', borderRadius: '16px',
+          fontSize: '16px', fontWeight: '700',
+          cursor: loading ? 'wait' : 'pointer',
+          boxShadow: '0 8px 24px rgba(109, 40, 217, 0.3)',
+          opacity: loading ? 0.7 : 1
         }}
       >
-        <FaFlask /> حساب تجريبي للتطوير
+        <FaFlask /> {loading ? '⏳ جاري الدخول...' : 'دخول بحساب تجريبي'}
       </button>
 
-      {!isPiBrowser && (
-        <p style={{ marginTop: '24px', fontSize: '12px', color: '#f59e0b', maxWidth: '400px' }}>
-          💡 استخدم Pi Browser على هاتفك لتجربة Pi Sign-In الحقيقية
-        </p>
-      )}
+      <p style={{ marginTop: '24px', fontSize: '12px', color: '#9ca3af' }}>
+        🧪 وضع التطوير - للاختبار فقط
+      </p>
     </div>
   );
 };

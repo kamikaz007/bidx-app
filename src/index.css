@@ -516,3 +516,203 @@ a {
 [data-theme="light"] .video-background .overlay {
   background: rgba(255, 255, 255, 0.5);
 }
+
+/* ==================== تجاوب الموبايل ==================== */
+
+/* القائمة الجانبية - تظهر في الشاشات الكبيرة */
+@media (min-width: 1024px) {
+  aside {
+    display: block !important;
+  }
+  main {
+    margin-right: 260px !important;
+  }
+}
+
+/* القائمة الجانبية - مخفية في الموبايل */
+@media (max-width: 1023px) {
+  aside {
+    display: none !important;
+  }
+  main {
+    margin-right: 0 !important;
+    padding: 16px !important;
+    padding-top: 80px !important;
+  }
+}
+
+/* شريط علوي متجاوب */
+@media (max-width: 768px) {
+  header {
+    height: 60px !important;
+  }
+  
+  header > div {
+    padding: 0 12px !important;
+  }
+  
+  /* إخفاء بعض العناصر في الموبايل */
+  .hide-mobile {
+    display: none !important;
+  }
+  
+  /* إظهار زر القائمة في الموبايل */
+  .show-mobile {
+    display: flex !important;
+  }
+  
+  /* تصغير الخطوط */
+  h1 { font-size: 22px !important; }
+  h2 { font-size: 18px !important; }
+  h3 { font-size: 16px !important; }
+}
+
+/* شبكة المزادات - عمود واحد في الموبايل */
+@media (max-width: 768px) {
+  .auction-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px !important;
+  }
+}
+
+/* شبكة عامة متجاوبة */
+@media (max-width: 480px) {
+  .responsive-grid {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* بطاقات متجاوبة */
+@media (max-width: 640px) {
+  .card {
+    border-radius: 12px !important;
+  }
+  
+  .card-body {
+    padding: 16px !important;
+  }
+}
+
+/* أزرار متجاوبة */
+@media (max-width: 480px) {
+  .btn {
+    padding: 8px 14px !important;
+    font-size: 12px !important;
+  }
+  
+  .btn-lg {
+    padding: 12px 20px !important;
+    font-size: 14px !important;
+  }
+}
+
+/* نماذج متجاوبة */
+@media (max-width: 640px) {
+  .form-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  input, select, textarea {
+    font-size: 16px !important; /* لمنع التكبير في iOS */
+    padding: 10px 14px !important;
+  }
+}
+
+/* نافذة منبثقة متجاوبة */
+@media (max-width: 500px) {
+  .modal {
+    width: 95% !important;
+    margin: 10px !important;
+    padding: 16px !important;
+  }
+}
+
+/* شريط التنقل السفلي للموبايل */
+.mobile-nav {
+  display: none;
+}
+
+@media (max-width: 1023px) {
+  .mobile-nav {
+    display: flex;
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    background: var(--bg-card);
+    border-top: 1px solid var(--border-color);
+    z-index: 100;
+    padding: 8px 0;
+    justify-content: space-around;
+    backdrop-filter: blur(20px);
+  }
+  
+  .mobile-nav a {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    color: var(--text-muted);
+    font-size: 10px;
+    text-decoration: none;
+    padding: 4px 8px;
+    transition: all 0.2s;
+  }
+  
+  .mobile-nav a.active {
+    color: var(--primary);
+  }
+  
+  .mobile-nav a svg {
+    font-size: 20px;
+  }
+  
+  /* ترك مساحة للشريط السفلي */
+  main {
+    padding-bottom: 80px !important;
+  }
+}
+
+/* جداول متجاوبة */
+@media (max-width: 768px) {
+  .table-responsive {
+    display: block;
+    width: 100%;
+    overflow-x: auto;
+  }
+}
+
+/* صور متجاوبة */
+img {
+  max-width: 100%;
+  height: auto;
+}
+
+/* فيديو خلفية متجاوب */
+@media (max-width: 768px) {
+  .video-background video {
+    object-fit: cover;
+    height: 100vh;
+  }
+}
+
+/* تحسين اللمس للموبايل */
+@media (hover: none) and (pointer: coarse) {
+  button, a, input, select {
+    min-height: 44px; /* حجم مناسب للإصبع */
+  }
+  
+  .btn {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+}
+
+/* تحسينات Pi Browser */
+@media (max-width: 480px) {
+  .pi-browser-header {
+    padding-top: 0 !important;
+  }
+}
