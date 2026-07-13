@@ -1,0 +1,14 @@
+{
+  "token": {
+    "code": "BIDX",
+    "issuer": "GA6AWJXKXORKDHS252MY36K56JTGGL2ZXMGFGDY6AE6DYTHRP4BPDEOF",
+    "distributor": "GARK5CAVR5YMOPJMWSVJNFKKSS2DNVGHP6TWAVNHNB3RYFLLVJGJRFZQ"
+  },
+  "keys": {
+    "issuerSecret": "SB3GYKMGPZXICDXCYA7N7LTUEQYKO32YF4VXQWKD3XWG63ZKGENES66N",
+    "distributorSecret": "SAUPYMK3EOIUHKXXYP3JSZ6P3OZNSNZPQCH33AOKR7OPCCG6Z6VX5BEA"
+  },
+  "network": "pi_testnet",
+  "createdAt": "2026-07-13T16:00:39.165Z",
+  "note": "فشلت المعاملة - استخدم Pi Developer Portal"
+}

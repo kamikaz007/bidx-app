@@ -1,251 +1,132 @@
 import { collection, addDoc, getDocs, doc, getDoc, updateDoc, query, where, orderBy, limit, serverTimestamp, increment, arrayUnion } from 'firebase/firestore';
 import { db } from './firebase';
-import { piBlockchain } from './piBlockchain';
 
 class FractionalOwnershipService {
   constructor() {
     this.collection = 'fractionalAssets';
   }
 
-  // إنشاء أصل جديد للتجزئة
-  async createFractionalAsset(assetData, creatorId) {
+  async createFractionalAsset(assetData, creatorId, imageFiles = []) {
     try {
-      // 1. ترميز الأصل على Pi Testnet
-      const blockchainAsset = await piBlockchain.tokenizeAsset({
-        name: assetData.title,
-        description: assetData.description,
-        totalShares: assetData.totalShares,
-        pricePerShare: assetData.pricePerShare,
-        symbol: `BIDX_${Date.now().toString(36).toUpperCase()}`
-      });
+      // تحويل الصور إلى Base64
+      let images = [];
+      if (imageFiles && imageFiles.length > 0) {
+        for (const file of imageFiles) {
+          const base64 = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(file);
+          });
+          images.push(base64);
+        }
+      } else if (assetData.images && assetData.images.length > 0) {
+        // إذا مررت الصور كـ Base64 مباشرة
+        images = assetData.images;
+      }
 
-      // 2. حفظ في Firebase
       const assetRef = await addDoc(collection(db, this.collection), {
         title: assetData.title,
-        description: assetData.description,
+        description: assetData.description || '',
         category: assetData.category || 'realestate',
-        imageUrl: assetData.imageUrl || '',
-        
-        // تفاصيل التجزئة
+        location: assetData.location || 'تونس',
         totalShares: assetData.totalShares,
         availableShares: assetData.totalShares,
         pricePerShare: assetData.pricePerShare,
         minimumShares: assetData.minimumShares || 1,
         currency: 'PI',
-        
-        // التقييم
-        totalValuation: assetData.totalShares * assetData.pricePerShare,
-        currentValuation: assetData.totalShares * assetData.pricePerShare,
-        
-        // العوائد
+        totalValuation: assetData.totalValuation || (assetData.totalShares * assetData.pricePerShare),
         annualYield: assetData.annualYield || 0,
-        dividendPerShare: 0,
-        
-        // المالكين
         shareholders: [],
         numberOfHolders: 0,
-        
-        // البلوكشين
-        blockchainAssetId: blockchainAsset.success ? blockchainAsset.asset.code : null,
-        blockchainTx: blockchainAsset.success ? blockchainAsset.asset : null,
-        network: 'pi_testnet',
-        
-        // البيانات الإدارية
         creatorId: creatorId,
         status: 'active',
         isVerified: false,
-        location: assetData.location || 'غير محدد',
-        
+        images: images,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
 
-      console.log('✅ تم إنشاء الأصل المجزأ:', assetRef.id);
+      console.log('✅ تم إنشاء الأصل مع', images.length, 'صورة');
       return { success: true, assetId: assetRef.id };
     } catch (error) {
-      console.error('❌ فشل إنشاء الأصل المجزأ:', error);
+      console.error('❌ فشل:', error);
       return { success: false, error: error.message };
     }
   }
 
-  // شراء حصص
+  async getAvailableFractionalAssets(limitCount = 100) {
+    try {
+      const q = query(collection(db, this.collection), limit(limitCount));
+      const snapshot = await getDocs(q);
+      const assets = [];
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        assets.push({
+          id: doc.id,
+          title: d.title || 'بدون عنوان',
+          description: d.description || '',
+          location: d.location || 'غير محدد',
+          totalShares: d.totalShares || 1000,
+          availableShares: d.availableShares ?? d.totalShares,
+          pricePerShare: d.pricePerShare || 100,
+          annualYield: d.annualYield || 0,
+          images: d.images || [],
+          status: d.status || 'active',
+          numberOfHolders: d.numberOfHolders || 0,
+          category: d.category || 'other'
+        });
+      });
+      return assets;
+    } catch (error) {
+      console.error('Error:', error);
+      return [];
+    }
+  }
+
   async purchaseShares(assetId, shares, buyerId) {
     try {
       const assetRef = doc(db, this.collection, assetId);
       const assetSnap = await getDoc(assetRef);
-
-      if (!assetSnap.exists()) {
-        throw new Error('الأصل غير موجود');
-      }
-
+      if (!assetSnap.exists()) throw new Error('الأصل غير موجود');
+      
       const asset = assetSnap.data();
-
-      // التحقق من توفر الحصص
-      if (asset.availableShares < shares) {
-        throw new Error(`فقط ${asset.availableShares} حصة متاحة`);
-      }
-
-      if (shares < asset.minimumShares) {
-        throw new Error(`الحد الأدنى للشراء: ${asset.minimumShares} حصة`);
-      }
-
+      const available = asset.availableShares ?? asset.totalShares;
+      
+      if (available < shares) throw new Error(`فقط ${available} حصة متاحة`);
+      
       const totalCost = shares * asset.pricePerShare;
-
-      // 1. تنفيذ المعاملة على Pi Testnet
-      const blockchainTx = await piBlockchain.buyShares(
-        asset.blockchainAssetId,
-        shares,
-        buyerId
-      );
-
-      // 2. تحديث Firebase
-      const shareholderEntry = {
-        userId: buyerId,
-        shares: shares,
-        purchasePrice: asset.pricePerShare,
-        totalInvested: totalCost,
-        purchaseDate: serverTimestamp(),
-        transactionId: blockchainTx.success ? blockchainTx.transaction.id : null,
-        network: 'pi_testnet'
-      };
-
       await updateDoc(assetRef, {
         availableShares: increment(-shares),
-        sharesSold: increment(shares),
         numberOfHolders: increment(1),
-        shareholders: arrayUnion(shareholderEntry),
-        currentValuation: (asset.totalShares - asset.availableShares + shares) * asset.pricePerShare,
+        shareholders: arrayUnion({ 
+          userId: buyerId, 
+          shares, 
+          totalInvested: totalCost, 
+          purchaseDate: serverTimestamp() 
+        }),
         updatedAt: serverTimestamp()
       });
 
-      // 3. تحديث محفظة المشتري
-      await this.updateUserPortfolio(buyerId, assetId, shares, totalCost);
-
-      return {
-        success: true,
-        sharesPurchased: shares,
-        totalCost: totalCost,
-        transactionId: blockchainTx.success ? blockchainTx.transaction.id : null,
-        network: 'pi_testnet'
-      };
+      return { success: true, totalCost };
     } catch (error) {
-      console.error('❌ فشل شراء الحصص:', error);
       return { success: false, error: error.message };
     }
   }
 
-  // بيع حصص
-  async sellShares(assetId, shares, sellerId) {
-    try {
-      const assetRef = doc(db, this.collection, assetId);
-      const assetSnap = await getDoc(assetRef);
-
-      if (!assetSnap.exists()) {
-        throw new Error('الأصل غير موجود');
-      }
-
-      const asset = assetSnap.data();
-
-      // تنفيذ البيع على البلوكشين
-      await piBlockchain.sellShares(asset.blockchainAssetId, shares, sellerId);
-
-      // تحديث Firebase
-      await updateDoc(assetRef, {
-        availableShares: increment(shares),
-        sharesSold: increment(-shares),
-        numberOfHolders: increment(-1),
-        updatedAt: serverTimestamp()
+  // دالة مساعدة لتحويل الملفات إلى Base64
+  async filesToBase64(files) {
+    const result = [];
+    for (const file of files) {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
       });
-
-      return { success: true, sharesSold: shares };
-    } catch (error) {
-      console.error('❌ فشل بيع الحصص:', error);
-      return { success: false, error: error.message };
+      result.push(base64);
     }
-  }
-
-  // تحديث محفظة المستخدم
-  async updateUserPortfolio(userId, assetId, shares, amount) {
-    try {
-      const portfolioRef = await addDoc(collection(db, 'portfolios'), {
-        userId: userId,
-        assetId: assetId,
-        shares: shares,
-        totalInvested: amount,
-        network: 'pi_testnet',
-        createdAt: serverTimestamp()
-      });
-
-      return portfolioRef.id;
-    } catch (error) {
-      console.error('فشل تحديث المحفظة:', error);
-    }
-  }
-
-  // جلب الأصول المجزأة المتاحة
-  async getAvailableFractionalAssets(category = null, limitCount = 20) {
-    try {
-      let q = query(
-        collection(db, this.collection),
-        where('status', '==', 'active'),
-        where('availableShares', '>', 0),
-        orderBy('availableShares', 'desc'),
-        orderBy('createdAt', 'desc'),
-        limit(limitCount)
-      );
-
-      const snapshot = await getDocs(q);
-      const assets = [];
-      snapshot.forEach(doc => {
-        assets.push({ id: doc.id, ...doc.data() });
-      });
-
-      return assets;
-    } catch (error) {
-      console.error('فشل جلب الأصول:', error);
-      return [];
-    }
-  }
-
-  // جلب محفظة المستخدم
-  async getUserPortfolio(userId) {
-    try {
-      const q = query(
-        collection(db, 'portfolios'),
-        where('userId', '==', userId),
-        orderBy('createdAt', 'desc')
-      );
-
-      const snapshot = await getDocs(q);
-      const portfolio = [];
-      snapshot.forEach(doc => {
-        portfolio.push({ id: doc.id, ...doc.data() });
-      });
-
-      return portfolio;
-    } catch (error) {
-      console.error('فشل جلب المحفظة:', error);
-      return [];
-    }
-  }
-
-  // حساب العوائد
-  async calculateDividends(assetId) {
-    try {
-      const asset = await getDoc(doc(db, this.collection, assetId));
-      if (asset.exists()) {
-        const data = asset.data();
-        const dividendPerShare = (data.annualYield / 100) * data.pricePerShare;
-        return {
-          annualYield: data.annualYield,
-          dividendPerShare: dividendPerShare,
-          totalDividends: dividendPerShare * data.totalShares
-        };
-      }
-      return null;
-    } catch (error) {
-      return null;
-    }
+    return result;
   }
 }
 

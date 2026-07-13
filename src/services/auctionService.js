@@ -2,8 +2,30 @@ import { collection, addDoc, getDocs, doc, getDoc, updateDoc, query, where, orde
 import { db } from './firebase';
 
 class AuctionService {
-  async createAuction(auctionData, sellerId) {
+  // تحويل الملفات إلى Base64
+  async filesToBase64(files) {
+    const result = [];
+    for (const file of files) {
+      const base64 = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+      });
+      result.push(base64);
+    }
+    return result;
+  }
+
+  async createAuction(auctionData, sellerId, imageFiles = []) {
     try {
+      // تحويل الصور إلى Base64
+      let images = [];
+      if (imageFiles && imageFiles.length > 0) {
+        images = await this.filesToBase64(imageFiles);
+      }
+
+      // إنشاء المزاد مع الصور
       const auctionRef = await addDoc(collection(db, 'auctions'), {
         title: auctionData.title,
         description: auctionData.description || '',
@@ -21,46 +43,39 @@ class AuctionService {
         views: 0,
         totalBids: 0,
         isVerified: false,
-        images: [],
+        images: images,
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      console.log('✅ تم إنشاء المزاد بنجاح:', auctionRef.id);
-      return { success: true, auctionId: auctionRef.id };
+
+      console.log('✅ تم إنشاء المزاد مع', images.length, 'صورة');
+      return { success: true, auctionId: auctionRef.id, imageCount: images.length };
     } catch (error) {
-      console.error('❌ فشل إنشاء المزاد:', error);
+      console.error('❌ فشل:', error);
       throw error;
     }
   }
 
   async getActiveAuctions(category = null, limitCount = 50) {
     try {
-      // جلب جميع المزادات بدون فلترة معقدة
-      const q = query(
-        collection(db, 'auctions'),
-        orderBy('createdAt', 'desc'),
-        limit(limitCount)
-      );
-
+      let q = query(collection(db, 'auctions'), orderBy('createdAt', 'desc'), limit(limitCount));
       const snapshot = await getDocs(q);
       const auctions = [];
       
       snapshot.forEach(doc => {
         const data = doc.data();
-        // فلترة المزادات النشطة فقط
         if (data.status === 'active') {
-          // فلترة حسب الفئة إذا كانت محددة
           if (!category || category === 'all' || data.category === category) {
             auctions.push({
               id: doc.id,
               ...data,
-              endTime: data.endTime ? data.endTime.toDate() : new Date(Date.now() + 86400000)
+              endTime: data.endTime ? data.endTime.toDate() : new Date(),
+              imageUrl: data.images && data.images.length > 0 ? data.images[0] : null
             });
           }
         }
       });
 
-      console.log(`✅ تم جلب ${auctions.length} مزاد نشط`);
       return auctions;
     } catch (error) {
       console.error('❌ فشل جلب المزادات:', error);
@@ -76,12 +91,12 @@ class AuctionService {
         return {
           id: auctionSnap.id,
           ...data,
-          endTime: data.endTime ? data.endTime.toDate() : new Date()
+          endTime: data.endTime ? data.endTime.toDate() : new Date(),
+          images: data.images || []
         };
       }
       return null;
     } catch (error) {
-      console.error('فشل جلب المزاد:', error);
       return null;
     }
   }
@@ -100,19 +115,13 @@ class AuctionService {
       });
       return { success: true };
     } catch (error) {
-      console.error('فشل تقديم المزايدة:', error);
       throw error;
     }
   }
 
   async getAuctionBids(auctionId) {
     try {
-      const q = query(
-        collection(db, 'bids'),
-        where('auctionId', '==', auctionId),
-        orderBy('amount', 'desc'),
-        limit(50)
-      );
+      const q = query(collection(db, 'bids'), where('auctionId', '==', auctionId), orderBy('amount', 'desc'), limit(50));
       const snapshot = await getDocs(q);
       const bids = [];
       snapshot.forEach(doc => bids.push({ id: doc.id, ...doc.data() }));

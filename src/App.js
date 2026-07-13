@@ -20,6 +20,7 @@ import Payment from './pages/Payment';
 import Dashboard from './pages/Dashboard';
 import FractionalMarket from './pages/FractionalMarket';
 import CreateFractional from './pages/CreateFractional';
+import TestUpload from './pages/TestUpload';
 
 const AppContent = () => {
   const { isAuthenticated } = useAuth();
@@ -65,6 +66,7 @@ const AppContent = () => {
                 <Route path="/fractional" element={<FractionalMarket />} />
                 <Route path="/create-fractional" element={<CreateFractional />} />
                 <Route path="/dashboard" element={<Dashboard />} />
+                <Route path="/test-upload" element={<TestUpload />} />
               </Routes>
             </main>
           </div>

@@ -1,14 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-hot-toast';
-import { collection, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, where, serverTimestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, updateDoc, query, orderBy, limit, serverTimestamp } from 'firebase/firestore';
 import { db } from '../services/firebase';
 import { adminAuth } from '../services/adminAuth';
 import { 
   FaLock, FaShieldAlt, FaEye, FaEyeSlash, FaGoogle, FaSignOutAlt,
   FaUsers, FaGavel, FaCoins, FaCog, FaChartLine, FaTrash, FaCheck,
   FaTimes, FaSearch, FaSync, FaHistory, FaEdit, FaSave, FaBan,
-  FaUserCheck, FaUserShield, FaUndo, FaExclamationTriangle, FaHammer
+  FaUserCheck, FaUndo, FaChartPie
 } from 'react-icons/fa';
 
 const AdminPanel = () => {
@@ -23,24 +23,15 @@ const AdminPanel = () => {
   const [error, setError] = useState('');
   const [currentCode, setCurrentCode] = useState('');
 
-  // بيانات حقيقية
-  const [users, setUsers] = useState([]);
   const [auctions, setAuctions] = useState([]);
-  const [stats, setStats] = useState({
-    totalUsers: 0, totalAuctions: 0, activeAuctions: 0,
-    totalBids: 0, totalVolume: 0, verifiedAuctions: 0
-  });
+  const [fractionalAssets, setFractionalAssets] = useState([]);
+  const [stats, setStats] = useState({ totalAuctions: 0, totalFractional: 0, totalUsers: 5240 });
   const [activeTab, setActiveTab] = useState('dashboard');
   const [showLogs, setShowLogs] = useState([]);
   const [editingSetting, setEditingSetting] = useState(null);
   const [editValue, setEditValue] = useState('');
   const [platformSettings, setPlatformSettings] = useState({
-    listingFee: 10,
-    saleCommission: 3,
-    bidFee: 1,
-    refundFee: 0.5,
-    maxFreeBids: 3,
-    sessionTimeout: 30
+    listingFee: 10, saleCommission: 3, bidFee: 1, refundFee: 0.5, maxFreeBids: 3
   });
 
   useEffect(() => {
@@ -52,16 +43,13 @@ const AdminPanel = () => {
   }, []);
 
   useEffect(() => {
-    const interval = setInterval(() => {
-      setCurrentCode(adminAuth.getCurrentCode());
-    }, 1000);
+    const interval = setInterval(() => setCurrentCode(adminAuth.getCurrentCode()), 1000);
     setCurrentCode(adminAuth.getCurrentCode());
     return () => clearInterval(interval);
   }, []);
 
-  // ==================== تحميل البيانات ====================
   const loadAllData = async () => {
-    await Promise.all([loadAuctions(), loadUsers()]);
+    await Promise.all([loadAuctions(), loadFractionalAssets()]);
   };
 
   const loadAuctions = async () => {
@@ -71,133 +59,77 @@ const AdminPanel = () => {
       const all = [];
       snap.forEach(doc => all.push({ id: doc.id, ...doc.data() }));
       setAuctions(all);
-      updateStats(all);
-      addLog('تحميل', `تم تحميل ${all.length} مزاد`);
-    } catch (err) {
-      console.log('Firebase offline');
-      setAuctions([]);
-    }
+      setStats(prev => ({ ...prev, totalAuctions: all.length }));
+      addLog('تحميل', all.length + ' مزاد');
+    } catch (err) {}
   };
 
-  const loadUsers = async () => {
-    // في الإنتاج: load from Firebase
-    setUsers([
-      { id: 'user1', username: 'مستخدم_1', kyc: true, status: 'active', joined: '2026-01-15' },
-      { id: 'user2', username: 'مستخدم_2', kyc: false, status: 'active', joined: '2026-03-20' },
-    ]);
-  };
-
-  const updateStats = (all) => {
-    setStats({
-      totalAuctions: all.length,
-      activeAuctions: all.filter(a => a.status === 'active').length,
-      verifiedAuctions: all.filter(a => a.isVerified).length,
-      totalBids: all.reduce((s, a) => s + (a.totalBids || 0), 0),
-      totalVolume: all.reduce((s, a) => s + (a.currentPrice || 0), 0),
-      totalUsers: users.length || 5240
-    });
-  };
-
-  // ==================== إجراءات حقيقية ====================
-
-  // حذف مزاد من Firebase
-  const handleDeleteAuction = async (auctionId) => {
-    if (!window.confirm('⚠️ هل أنت متأكد من حذف هذا المزاد نهائياً؟')) return;
-    
+  const loadFractionalAssets = async () => {
     try {
-      setLoading(true);
-      await deleteDoc(doc(db, 'auctions', auctionId));
-      setAuctions(prev => prev.filter(a => a.id !== auctionId));
-      addLog('🗑️ حذف مزاد', `تم حذف ${auctionId} من Firebase`);
-      toast.success('✅ تم حذف المزاد نهائياً');
-    } catch (err) {
-      // حذف من الواجهة حتى لو فشل Firebase
-      setAuctions(prev => prev.filter(a => a.id !== auctionId));
-      addLog('🗑️ حذف محلي', `حذف ${auctionId} (Firebase offline)`);
-      toast.success('تم حذف المزاد');
-    }
-    setLoading(false);
-  };
-
-  // توثيق مزاد
-  const handleVerifyAuction = async (auctionId) => {
-    try {
-      setLoading(true);
-      const ref = doc(db, 'auctions', auctionId);
-      await updateDoc(ref, { isVerified: true, verifiedAt: serverTimestamp() });
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: true } : a));
-      addLog('✅ توثيق', `تم توثيق المزاد ${auctionId}`);
-      toast.success('✅ تم توثيق المزاد');
-    } catch (err) {
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: true } : a));
-      toast.success('تم توثيق المزاد');
-    }
-    setLoading(false);
-  };
-
-  // إلغاء توثيق مزاد
-  const handleUnverifyAuction = async (auctionId) => {
-    try {
-      const ref = doc(db, 'auctions', auctionId);
-      await updateDoc(ref, { isVerified: false });
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: false } : a));
-      addLog('❌ إلغاء توثيق', `تم إلغاء توثيق ${auctionId}`);
-      toast.success('تم إلغاء التوثيق');
-    } catch (err) {
-      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: false } : a));
-    }
-  };
-
-  // تعديل إعدادات المنصة
-  const handleSaveSetting = (key) => {
-    setPlatformSettings(prev => ({ ...prev, [key]: parseFloat(editValue) }));
-    setEditingSetting(null);
-    addLog('⚙️ تعديل إعداد', `تم تغيير ${key} إلى ${editValue}`);
-    toast.success('✅ تم حفظ الإعداد');
-  };
-
-  // حظر/إلغاء حظر مستخدم
-  const handleToggleUserBan = (userId, currentStatus) => {
-    const newStatus = currentStatus === 'banned' ? 'active' : 'banned';
-    setUsers(prev => prev.map(u => u.id === userId ? { ...u, status: newStatus } : u));
-    addLog(newStatus === 'banned' ? '🚫 حظر' : '✅ إلغاء حظر', `المستخدم ${userId}`);
-    toast.success(newStatus === 'banned' ? 'تم حظر المستخدم' : 'تم إلغاء الحظر');
-  };
-
-  // حذف جميع المزادات
-  const handleDeleteAllAuctions = async () => {
-    if (!window.confirm('⚠️ تحذير: هل تريد حذف جميع المزادات؟ هذا الإجراء لا يمكن التراجع عنه!')) return;
-    if (!window.confirm('تأكيد نهائي: حذف جميع المزادات؟')) return;
-    
-    setLoading(true);
-    let count = 0;
-    for (const auction of auctions) {
-      try {
-        await deleteDoc(doc(db, 'auctions', auction.id));
-        count++;
-      } catch (err) {}
-    }
-    setAuctions([]);
-    addLog('🗑️ حذف شامل', `تم حذف ${count} مزاد`);
-    toast.success(`✅ تم حذف ${count} مزاد`);
-    setLoading(false);
+      const q = query(collection(db, 'fractionalAssets'), limit(100));
+      const snap = await getDocs(q);
+      const all = [];
+      snap.forEach(doc => all.push({ id: doc.id, ...doc.data() }));
+      setFractionalAssets(all);
+      setStats(prev => ({ ...prev, totalFractional: all.length }));
+      addLog('تحميل', all.length + ' أصل مجزأ');
+    } catch (err) {}
   };
 
   const addLog = (action, details) => {
     setShowLogs(prev => [{ action, details, time: new Date().toLocaleString('ar-TN'), id: Date.now() }, ...prev].slice(0, 100));
   };
 
-  // ==================== تسجيل الدخول ====================
+  const handleDeleteAuction = async (auctionId) => {
+    if (!window.confirm('حذف هذا المزاد؟')) return;
+    try {
+      await deleteDoc(doc(db, 'auctions', auctionId));
+      setAuctions(prev => prev.filter(a => a.id !== auctionId));
+      addLog('حذف مزاد', auctionId);
+      toast.success('تم الحذف');
+    } catch (err) {
+      setAuctions(prev => prev.filter(a => a.id !== auctionId));
+      toast.success('تم الحذف');
+    }
+  };
+
+  const handleDeleteFractional = async (assetId) => {
+    if (!window.confirm('حذف هذا الأصل المجزأ؟')) return;
+    try {
+      await deleteDoc(doc(db, 'fractionalAssets', assetId));
+      setFractionalAssets(prev => prev.filter(a => a.id !== assetId));
+      addLog('حذف أصل مجزأ', assetId);
+      toast.success('تم الحذف');
+    } catch (err) {
+      setFractionalAssets(prev => prev.filter(a => a.id !== assetId));
+      toast.success('تم الحذف');
+    }
+  };
+
+  const handleVerifyAuction = async (auctionId) => {
+    try {
+      await updateDoc(doc(db, 'auctions', auctionId), { isVerified: true, verifiedAt: serverTimestamp() });
+      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: true } : a));
+      toast.success('تم التوثيق');
+    } catch (err) {
+      setAuctions(prev => prev.map(a => a.id === auctionId ? { ...a, isVerified: true } : a));
+    }
+  };
+
+  const handleSaveSetting = (key) => {
+    setPlatformSettings(prev => ({ ...prev, [key]: parseFloat(editValue) }));
+    setEditingSetting(null);
+    toast.success('تم الحفظ');
+  };
+
   const handlePasswordLogin = async (e) => {
     e.preventDefault();
     setLoading(true); setError('');
     try {
       await adminAuth.authenticateWithPassword(password);
       setLoginStep('2fa');
-      toast.success('✅ كلمة المرور صحيحة');
-    } catch (err) {
-      setError(err.message);
-    }
+      toast.success('كلمة المرور صحيحة');
+    } catch (err) { setError(err.message); }
     setLoading(false);
   };
 
@@ -209,33 +141,25 @@ const AdminPanel = () => {
       setIsAuthenticated(true);
       setSessionInfo(result.adminUser);
       loadAllData();
-      addLog('🔐 دخول', 'تم تسجيل دخول المدير');
-      toast.success('✅ مرحباً بك في لوحة التحكم');
-    } catch (err) {
-      setError(err.message);
-    }
+      toast.success('مرحباً بك');
+    } catch (err) { setError(err.message); }
     setLoading(false);
   };
 
   const handleLogout = () => {
-    addLog('🚪 خروج', 'تسجيل خروج المدير');
     adminAuth.revokeAccess();
     setIsAuthenticated(false);
     setLoginStep('password');
     setPassword(''); setAuthCode('');
-    setActiveTab('dashboard');
   };
 
-  // ==================== واجهة تسجيل الدخول ====================
   if (!isAuthenticated) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '70vh', padding: '20px' }}>
         <div className="card" style={{ maxWidth: '420px', width: '100%', padding: '32px' }}>
           <div style={{ textAlign: 'center', marginBottom: '24px' }}>
             <div style={{ fontSize: '48px', marginBottom: '12px' }}>🔐</div>
-            <h2 style={{ fontSize: '22px', fontWeight: '800' }}>
-              {loginStep === 'password' ? 'دخول المدير' : 'Google Authenticator'}
-            </h2>
+            <h2 style={{ fontSize: '22px', fontWeight: '800' }}>{loginStep === 'password' ? 'دخول المدير' : 'Google Authenticator'}</h2>
           </div>
           {error && <div style={{ padding: '12px', background: '#fee2e2', borderRadius: '8px', color: '#dc2626', fontSize: '13px', marginBottom: '16px' }}>{error}</div>}
 
@@ -250,7 +174,7 @@ const AdminPanel = () => {
                 </button>
               </div>
               <button type="submit" disabled={loading || !password} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px' }}>
-                {loading ? '⏳ جاري...' : '🔐 دخول'}
+                {loading ? 'جاري...' : 'دخول'}
               </button>
             </form>
           ) : (
@@ -265,9 +189,9 @@ const AdminPanel = () => {
                 <p style={{ fontSize: '20px', fontWeight: '800', color: '#059669', fontFamily: 'monospace' }}>{currentCode}</p>
               </div>
               <button type="submit" disabled={loading || authCode.length !== 6} className="btn btn-primary" style={{ width: '100%', justifyContent: 'center', padding: '14px', background: '#059669' }}>
-                {loading ? '⏳ جاري...' : '✅ تأكيد'}
+                {loading ? 'جاري...' : 'تأكيد'}
               </button>
-              <button type="button" onClick={() => setLoginStep('password')} className="btn btn-ghost" style={{ width: '100%', marginTop: '8px', justifyContent: 'center' }}>⬅ رجوع</button>
+              <button type="button" onClick={() => setLoginStep('password')} className="btn btn-ghost" style={{ width: '100%', marginTop: '8px', justifyContent: 'center' }}>رجوع</button>
             </form>
           )}
         </div>
@@ -275,16 +199,12 @@ const AdminPanel = () => {
     );
   }
 
-  // ==================== لوحة التحكم ====================
   return (
     <div style={{ maxWidth: '1100px', margin: '0 auto' }}>
-      {/* الهيدر */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '12px' }}>
         <div>
-          <h1 style={{ fontSize: '24px', fontWeight: '800' }}>🔐 لوحة التحكم الإدارية</h1>
-          <p style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '4px' }}>
-            ⏰ الجلسة: {sessionInfo?.remainingMinutes || 0} دقيقة | الصلاحية: مدير كامل
-          </p>
+          <h1 style={{ fontSize: '24px', fontWeight: '800' }}>لوحة التحكم</h1>
+          <p style={{ fontSize: '12px', color: 'var(--text-muted)' }}>الجلسة: {sessionInfo?.remainingMinutes || 0} دقيقة</p>
         </div>
         <div style={{ display: 'flex', gap: '8px' }}>
           <button onClick={loadAllData} className="btn btn-ghost btn-sm"><FaSync /> تحديث</button>
@@ -294,113 +214,60 @@ const AdminPanel = () => {
         </div>
       </div>
 
-      {/* التبويبات */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '20px', flexWrap: 'wrap' }}>
         {[
-          { id: 'dashboard', label: '📊 الرئيسية', color: '#7c3aed' },
-          { id: 'auctions', label: '📋 المزادات', color: '#059669' },
-          { id: 'users', label: '👥 المستخدمين', color: '#2563eb' },
-          { id: 'settings', label: '⚙️ الإعدادات', color: '#6b7280' },
-          { id: 'logs', label: '📝 السجل', color: '#d97706' },
+          { id: 'dashboard', label: 'الرئيسية', color: '#7c3aed' },
+          { id: 'auctions', label: 'مزادات', color: '#059669' },
+          { id: 'fractional', label: 'أصول مجزأة', color: '#d97706' },
+          { id: 'settings', label: 'إعدادات', color: '#6b7280' },
+          { id: 'logs', label: 'السجل', color: '#2563eb' },
         ].map(tab => (
           <button key={tab.id} onClick={() => setActiveTab(tab.id)} style={{
             padding: '10px 18px', borderRadius: '10px', border: 'none', cursor: 'pointer',
             background: activeTab === tab.id ? tab.color : 'var(--bg-secondary)',
             color: activeTab === tab.id ? 'white' : 'var(--text-secondary)',
-            fontWeight: activeTab === tab.id ? '700' : '500', fontSize: '13px', transition: 'all 0.2s'
+            fontWeight: activeTab === tab.id ? '700' : '500', fontSize: '13px'
           }}>{tab.label}</button>
         ))}
       </div>
 
-      {/* ==================== الرئيسية ==================== */}
       {activeTab === 'dashboard' && (
-        <div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginBottom: '24px' }}>
-            {[
-              { icon: <FaGavel />, label: 'كل المزادات', value: stats.totalAuctions, color: '#7c3aed' },
-              { icon: <FaCheck />, label: 'موثقة', value: stats.verifiedAuctions, color: '#059669' },
-              { icon: <FaGavel />, label: 'نشطة', value: stats.activeAuctions, color: '#2563eb' },
-              { icon: <FaCoins />, label: 'مزايدات', value: stats.totalBids.toLocaleString(), color: '#d97706' },
-              { icon: <FaChartLine />, label: 'حجم التداول', value: stats.totalVolume.toLocaleString() + ' Pi', color: '#db2777' },
-            ].map((stat, i) => (
-              <div key={i} className="card" style={{ padding: '14px' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
-                  <span style={{ color: stat.color }}>{stat.icon}</span>
-                  <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{stat.label}</span>
-                </div>
-                <div style={{ fontSize: '18px', fontWeight: '800', color: stat.color }}>{stat.value}</div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: '12px' }}>
+          {[
+            { icon: <FaGavel />, label: 'مزادات', value: stats.totalAuctions, color: '#7c3aed' },
+            { icon: <FaChartPie />, label: 'أصول مجزأة', value: stats.totalFractional, color: '#d97706' },
+            { icon: <FaUsers />, label: 'مستخدمين', value: stats.totalUsers, color: '#2563eb' },
+          ].map((s, i) => (
+            <div key={i} className="card" style={{ padding: '16px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '6px' }}>
+                <span style={{ color: s.color }}>{s.icon}</span>
+                <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{s.label}</span>
               </div>
-            ))}
-          </div>
-
-          {/* أزرار سريعة */}
-          <div className="card" style={{ padding: '20px' }}>
-            <h3 style={{ fontWeight: '700', marginBottom: '12px' }}>⚡ إجراءات سريعة</h3>
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button onClick={loadAllData} className="btn btn-primary btn-sm"><FaSync /> تحديث البيانات</button>
-              <button onClick={handleDeleteAllAuctions} className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444' }}>
-                <FaTrash /> حذف جميع المزادات
-              </button>
+              <div style={{ fontSize: '20px', fontWeight: '800', color: s.color }}>{s.value}</div>
             </div>
-          </div>
+          ))}
         </div>
       )}
 
-      {/* ==================== المزادات ==================== */}
       {activeTab === 'auctions' && (
         <div className="card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-            <h3 style={{ fontWeight: '700' }}>📋 جميع المزادات ({auctions.length})</h3>
-            <button onClick={loadAuctions} className="btn btn-ghost btn-sm"><FaSync /> تحديث</button>
-          </div>
-
-          {auctions.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>لا توجد مزادات</p>
-          ) : (
+          <h3 style={{ fontWeight: '700', marginBottom: '12px' }}>المزادات ({auctions.length})</h3>
+          {auctions.length === 0 ? <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>لا توجد مزادات</p> : (
             <div style={{ overflowX: 'auto' }}>
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-                <thead>
-                  <tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>العنوان</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>السعر</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>الفئة</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>الحالة</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>موثق</th>
-                    <th style={{ padding: '10px', textAlign: 'right' }}>مزايدات</th>
-                    <th style={{ padding: '10px', textAlign: 'center' }}>إجراءات</th>
-                  </tr>
-                </thead>
+                <thead><tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                  <th style={{ padding: '8px' }}>العنوان</th><th style={{ padding: '8px' }}>السعر</th><th style={{ padding: '8px' }}>الحالة</th><th style={{ padding: '8px' }}>إجراءات</th>
+                </tr></thead>
                 <tbody>
-                  {auctions.map(auction => (
-                    <tr key={auction.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                      <td style={{ padding: '8px', fontWeight: '600', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {auction.title || 'بدون عنوان'}
-                      </td>
-                      <td style={{ padding: '8px' }}>{auction.currentPrice?.toLocaleString() || 0} {auction.currency || 'PI'}</td>
-                      <td style={{ padding: '8px' }}>{auction.category || 'عام'}</td>
+                  {auctions.map(a => (
+                    <tr key={a.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                      <td style={{ padding: '8px', fontWeight: '600', maxWidth: '150px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{a.title || 'بدون عنوان'}</td>
+                      <td style={{ padding: '8px' }}>{(a.currentPrice || 0).toLocaleString()} {a.currency}</td>
+                      <td style={{ padding: '8px' }}><span className={`badge ${a.status === 'active' ? 'badge-success' : 'badge-warning'}`}>{a.status === 'active' ? 'نشط' : a.status || '-'}</span></td>
                       <td style={{ padding: '8px' }}>
-                        <span className={`badge ${auction.status === 'active' ? 'badge-success' : 'badge-warning'}`}>
-                          {auction.status === 'active' ? 'نشط' : auction.status === 'ended' ? 'منتهي' : auction.status}
-                        </span>
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>
-                        {auction.isVerified ? <FaCheck style={{ color: '#10b981' }} /> : <FaTimes style={{ color: '#ef4444' }} />}
-                      </td>
-                      <td style={{ padding: '8px', textAlign: 'center' }}>{auction.totalBids || 0}</td>
-                      <td style={{ padding: '8px' }}>
-                        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-                          {auction.isVerified ? (
-                            <button onClick={() => handleUnverifyAuction(auction.id)} className="btn btn-sm" style={{ background: '#fef3c7', color: '#d97706', fontSize: '10px', padding: '4px 8px' }} title="إلغاء التوثيق">
-                              <FaUndo />
-                            </button>
-                          ) : (
-                            <button onClick={() => handleVerifyAuction(auction.id)} className="btn btn-sm" style={{ background: '#d1fae5', color: '#059669', fontSize: '10px', padding: '4px 8px' }} title="توثيق">
-                              <FaCheck />
-                            </button>
-                          )}
-                          <button onClick={() => handleDeleteAuction(auction.id)} className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444', fontSize: '10px', padding: '4px 8px' }} title="حذف">
-                            <FaTrash />
-                          </button>
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {!a.isVerified && <button onClick={() => handleVerifyAuction(a.id)} className="btn btn-sm" style={{ background: '#d1fae5', color: '#059669', fontSize: '10px', padding: '4px 6px' }}><FaCheck /></button>}
+                          <button onClick={() => handleDeleteAuction(a.id)} className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444', fontSize: '10px', padding: '4px 6px' }}><FaTrash /></button>
                         </div>
                       </td>
                     </tr>
@@ -412,104 +279,85 @@ const AdminPanel = () => {
         </div>
       )}
 
-      {/* ==================== المستخدمين ==================== */}
-      {activeTab === 'users' && (
+      {activeTab === 'fractional' && (
         <div className="card" style={{ padding: '20px' }}>
-          <h3 style={{ fontWeight: '700', marginBottom: '16px' }}>👥 إدارة المستخدمين</h3>
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
-                  <th style={{ padding: '10px', textAlign: 'right' }}>المستخدم</th>
-                  <th style={{ padding: '10px', textAlign: 'right' }}>KYC</th>
-                  <th style={{ padding: '10px', textAlign: 'right' }}>الحالة</th>
-                  <th style={{ padding: '10px', textAlign: 'right' }}>تاريخ الانضمام</th>
-                  <th style={{ padding: '10px', textAlign: 'center' }}>إجراءات</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.map(user => (
-                  <tr key={user.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                    <td style={{ padding: '8px', fontWeight: '600' }}>{user.username}</td>
-                    <td style={{ padding: '8px' }}>
-                      {user.kyc ? <FaUserCheck style={{ color: '#10b981' }} /> : <FaTimes style={{ color: '#ef4444' }} />}
-                    </td>
-                    <td style={{ padding: '8px' }}>
-                      <span className={`badge ${user.status === 'active' ? 'badge-success' : 'badge-danger'}`}>
-                        {user.status === 'active' ? 'نشط' : 'محظور'}
-                      </span>
-                    </td>
-                    <td style={{ padding: '8px' }}>{user.joined}</td>
-                    <td style={{ padding: '8px', textAlign: 'center' }}>
-                      <button onClick={() => handleToggleUserBan(user.id, user.status)} className="btn btn-sm" style={{ background: user.status === 'active' ? '#fee2e2' : '#d1fae5', color: user.status === 'active' ? '#ef4444' : '#059669', fontSize: '10px', padding: '4px 8px' }}>
-                        {user.status === 'active' ? <FaBan /> : <FaUserCheck />}
-                        {user.status === 'active' ? 'حظر' : 'إلغاء حظر'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '12px' }}>
+            <h3 style={{ fontWeight: '700' }}>الأصول المجزأة ({fractionalAssets.length})</h3>
+            <button onClick={loadFractionalAssets} className="btn btn-ghost btn-sm"><FaSync /></button>
           </div>
+          {fractionalAssets.length === 0 ? <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>لا توجد أصول مجزأة</p> : (
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '12px' }}>
+                <thead><tr style={{ borderBottom: '2px solid var(--border-color)', background: 'var(--bg-secondary)' }}>
+                  <th style={{ padding: '8px' }}>الاسم</th>
+                  <th style={{ padding: '8px' }}>السعر</th>
+                  <th style={{ padding: '8px' }}>الحصص</th>
+                  <th style={{ padding: '8px' }}>متاح</th>
+                  <th style={{ padding: '8px' }}>عائد</th>
+                  <th style={{ padding: '8px' }}>حذف</th>
+                </tr></thead>
+                <tbody>
+                  {fractionalAssets.map(a => {
+                    const avail = a.availableShares != null ? a.availableShares : (a.totalShares || 0);
+                    return (
+                      <tr key={a.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
+                        <td style={{ padding: '8px', fontWeight: '600' }}>{a.title || a.name || '-'}</td>
+                        <td style={{ padding: '8px' }}>{(a.pricePerShare || 0).toLocaleString()} Pi</td>
+                        <td style={{ padding: '8px' }}>{(a.totalShares || 0).toLocaleString()}</td>
+                        <td style={{ padding: '8px' }}>{avail.toLocaleString()}</td>
+                        <td style={{ padding: '8px' }}>{a.annualYield || 0}%</td>
+                        <td style={{ padding: '8px' }}>
+                          <button onClick={() => handleDeleteFractional(a.id)} className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444', fontSize: '10px', padding: '4px 8px' }}>
+                            <FaTrash style={{ marginLeft: '3px' }} /> حذف
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       )}
 
-      {/* ==================== الإعدادات ==================== */}
       {activeTab === 'settings' && (
         <div className="card" style={{ padding: '20px' }}>
-          <h3 style={{ fontWeight: '700', marginBottom: '16px' }}>⚙️ إعدادات المنصة</h3>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-            {[
-              { key: 'listingFee', label: 'رسوم الإدراج', desc: 'BID', value: platformSettings.listingFee },
-              { key: 'saleCommission', label: 'عمولة البيع', desc: '%', value: platformSettings.saleCommission },
-              { key: 'bidFee', label: 'رسوم المزايدة', desc: 'BID', value: platformSettings.bidFee },
-              { key: 'refundFee', label: 'رسوم الاسترداد', desc: '%', value: platformSettings.refundFee },
-              { key: 'maxFreeBids', label: 'مزايدات مجانية', desc: 'مرة', value: platformSettings.maxFreeBids },
-            ].map(setting => (
-              <div key={setting.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px', background: 'var(--bg-secondary)', borderRadius: '8px' }}>
-                <div>
-                  <p style={{ fontWeight: '600', fontSize: '14px' }}>{setting.label}</p>
-                  <p style={{ fontSize: '11px', color: 'var(--text-muted)' }}>بالـ {setting.desc}</p>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  {editingSetting === setting.key ? (
-                    <>
-                      <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)}
-                        style={{ width: '70px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', textAlign: 'center' }} autoFocus />
-                      <button onClick={() => handleSaveSetting(setting.key)} className="btn btn-sm" style={{ background: '#d1fae5', color: '#059669' }}>
-                        <FaSave />
-                      </button>
-                      <button onClick={() => setEditingSetting(null)} className="btn btn-sm" style={{ background: '#fee2e2', color: '#ef4444' }}>
-                        <FaTimes />
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <span style={{ fontWeight: '700', color: '#7c3aed', fontSize: '16px' }}>{setting.value}</span>
-                      <button onClick={() => { setEditingSetting(setting.key); setEditValue(setting.value.toString()); }}
-                        className="btn btn-ghost btn-sm"><FaEdit /></button>
-                    </>
-                  )}
-                </div>
+          <h3 style={{ fontWeight: '700', marginBottom: '12px' }}>الإعدادات</h3>
+          {[
+            { key: 'listingFee', label: 'رسوم الإدراج', value: platformSettings.listingFee },
+            { key: 'saleCommission', label: 'عمولة البيع', value: platformSettings.saleCommission },
+            { key: 'bidFee', label: 'رسوم المزايدة', value: platformSettings.bidFee },
+            { key: 'refundFee', label: 'رسوم الاسترداد', value: platformSettings.refundFee },
+          ].map(s => (
+            <div key={s.key} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '10px', background: 'var(--bg-secondary)', borderRadius: '8px', marginBottom: '8px' }}>
+              <div><p style={{ fontWeight: '600', fontSize: '13px' }}>{s.label}</p></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                {editingSetting === s.key ? (
+                  <>
+                    <input type="number" value={editValue} onChange={(e) => setEditValue(e.target.value)} style={{ width: '60px', padding: '6px', borderRadius: '6px', border: '1px solid var(--border-color)', textAlign: 'center' }} autoFocus />
+                    <button onClick={() => handleSaveSetting(s.key)} style={{ background: '#d1fae5', color: '#059669', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }}><FaSave /></button>
+                    <button onClick={() => setEditingSetting(null)} style={{ background: '#fee2e2', color: '#ef4444', border: 'none', borderRadius: '4px', padding: '4px 8px', cursor: 'pointer' }}><FaTimes /></button>
+                  </>
+                ) : (
+                  <>
+                    <span style={{ fontWeight: '700', color: '#7c3aed' }}>{s.value}</span>
+                    <button onClick={() => { setEditingSetting(s.key); setEditValue(s.value.toString()); }} className="btn btn-ghost btn-sm"><FaEdit /></button>
+                  </>
+                )}
               </div>
-            ))}
-          </div>
+            </div>
+          ))}
         </div>
       )}
 
-      {/* ==================== السجل ==================== */}
       {activeTab === 'logs' && (
         <div className="card" style={{ padding: '20px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '16px' }}>
-            <h3 style={{ fontWeight: '700' }}>📝 سجل النشاطات ({showLogs.length})</h3>
-            <button onClick={() => setShowLogs([])} className="btn btn-ghost btn-sm"><FaTrash /> مسح السجل</button>
-          </div>
-          {showLogs.length === 0 ? (
-            <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>لا توجد نشاطات</p>
-          ) : (
+          <h3 style={{ fontWeight: '700', marginBottom: '12px' }}>سجل النشاطات ({showLogs.length})</h3>
+          {showLogs.length === 0 ? <p style={{ color: 'var(--text-muted)', textAlign: 'center', padding: '40px' }}>لا توجد نشاطات</p> : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', maxHeight: '400px', overflowY: 'auto' }}>
               {showLogs.map(log => (
-                <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 12px', background: 'var(--bg-secondary)', borderRadius: '6px', fontSize: '12px', gap: '12px' }}>
+                <div key={log.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 10px', background: 'var(--bg-secondary)', borderRadius: '4px', fontSize: '11px', gap: '10px' }}>
                   <span style={{ fontWeight: '600', whiteSpace: 'nowrap' }}>{log.action}</span>
                   <span style={{ color: 'var(--text-muted)', flex: 1 }}>{log.details}</span>
                   <span style={{ color: 'var(--text-muted)', fontSize: '10px', whiteSpace: 'nowrap' }}>{log.time}</span>
